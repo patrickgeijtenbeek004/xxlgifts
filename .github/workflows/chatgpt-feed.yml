@@ -1,0 +1,36 @@
+name: ChatGPT Ads feed uploaden
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # elke dag om 04:17 UTC (06:17 NL-zomertijd)
+  workflow_dispatch:        # handmatig starten via de knop "Run workflow"
+  push:
+    paths: ["feeds/**"]     # direct uploaden zodra je de CSV aanpast
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Feed controleren
+        run: python3 scripts/check_feed.py feeds/keycords-lanyards_chatgpt_product_feed_keycords.csv
+
+      - name: Inpakken (gzip)
+        run: gzip -kfn feeds/keycords-lanyards_chatgpt_product_feed_keycords.csv
+
+      - name: Uploaden naar OpenAI via SFTP
+        env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          # Vaste bestandsnaam: OpenAI wil dat je hetzelfde bestand overschrijft, geen nieuwe naam per dag
+          lftp -u "$SFTP_USER","$SFTP_PASSWORD" -p "${SFTP_PORT:-22}" "sftp://$SFTP_HOST" -e "
+            set sftp:auto-confirm yes;
+            set net:max-retries 3;
+            put feeds/keycords-lanyards_chatgpt_product_feed_keycords.csv.gz -o keycords-lanyards_chatgpt.csv.gz;
+            ls;
+            bye"
